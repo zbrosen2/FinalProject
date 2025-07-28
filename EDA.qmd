@@ -16,6 +16,7 @@ diabetes <- read_csv("data/diabetes_binary_health_indicators_BRFSS2015.csv")
 # Age, BMI, PhysActivity
 summary(diabetes |> select(Diabetes_binary, Age, BMI, PhysActivity))
 
+# create summary stats for BMI and PhysActivity
 diabetes |> 
   filter(Diabetes_binary %in% c(0, 1)) |>
   group_by(Diabetes_binary) |>
@@ -26,6 +27,7 @@ diabetes |>
     PhysActivity_prop = mean(PhysActivity)
   )
 
+# create summary stats for Age
 diabetes |>
   filter(Diabetes_binary %in% c(0, 1)) |>
   group_by(Diabetes_binary, Age) |>
@@ -34,6 +36,7 @@ diabetes |>
   slice_max(count, n = 1) |>
   select(Diabetes_binary, most_common_age_group = Age, count)
 
+# univariate Diabetes_binary plot (bar plot)
 ggplot(diabetes, aes(x = Diabetes_binary)) +
   geom_bar() +
   scale_x_continuous(breaks = c(0, 1)) +
@@ -41,18 +44,21 @@ ggplot(diabetes, aes(x = Diabetes_binary)) +
        x = "Diabetes Status",
        y = "Count")
 
+# univariate Age plot (bar plot)
 ggplot(diabetes, aes(x = Age)) +
   geom_bar() +
   labs(title = "Bar Plot of Age",
        x = "Age Group",
        y = "Count")
 
+# univariate BMI plot (histogram)
 ggplot(diabetes, aes(x = BMI)) +
   geom_histogram(binwidth = 1) +
   labs(title = "Histogram of BMI",
        x = "BMI",
        y = "Count")
 
+# univariate PhysActivity plot (bar plot)
 ggplot(diabetes, aes(x = PhysActivity)) +
   geom_bar() +
   scale_x_continuous(breaks = c(0, 1)) +
@@ -60,17 +66,20 @@ ggplot(diabetes, aes(x = PhysActivity)) +
        x = "PhysActivity",
        y = "Count")
 
+# bivariate Age by Diabetes_binary plot (bar plot)
 ggplot(diabetes, aes(x = Age, fill = factor(Diabetes_binary))) +
   geom_bar(position = "dodge") +
   labs(title = "Diabetes Count by Age Group",
        x = "Age Group", y = "Count", fill = "Diabetes Status") +
   theme_minimal()
 
+# bivariate BMI by Diabetes_binary plot (smoothed histogram)
 ggplot(diabetes |> filter(BMI < 70), aes(x = BMI)) +
   geom_density(alpha = 0.5, aes(fill = factor(Diabetes_binary))) +
   scale_fill_discrete(name = "Diabetes Status") +
   labs(title = "BMI Distribution by Diabetes Status", x = "BMI", y = "Density")
 
+# bivariate PhysActivity by Diabetes_binary (contingency table)
 tblPhysActivity <- table(diabetes$PhysActivity, diabetes$Diabetes_binary, 
                          dnn = c("Physical Activity", "Diabetes"))
 tblPhysActivity

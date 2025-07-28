@@ -4,4 +4,169 @@ format: html
 editor: visual
 ---
 
-## Quarto
+## Introduction
+
+## Data
+
+```{r}
+#| warning: false
+set.seed(123)
+library(tidyverse)
+library(rsample)
+library(caret)
+library(ranger)
+library(yardstick)
+
+diabetes <- read_csv("data/diabetes_binary_health_indicators_BRFSS2015.csv")
+
+diabetes <- diabetes |>
+  mutate(Diabetes_binary = factor(Diabetes_binary, labels = c("N", "Y")),
+         HighBP = factor(HighBP),
+         HighChol = factor(HighChol),
+         Smoker = factor(Smoker),
+         PhysActivity = factor(PhysActivity),
+         Age = factor(Age, ordered = TRUE)
+         )
+
+data_split <- initial_split(diabetes, prop = 0.7)
+train <- training(data_split)
+test <- testing(data_split)
+
+control <- trainControl(method = "cv", number = 5, classProbs = TRUE,
+                            summaryFunction = mnLogLoss)
+
+grid_LR <- expand.grid(
+  alpha = c(0, 0.5, 1),
+  lambda = exp(seq(log(0.001), log(10), length.out = 200))
+)
+
+LR_1 <- train(Diabetes_binary ~ PhysActivity + Age + BMI,
+              data = train,
+              metric = "logLoss",
+              preProcess = c("center", "scale"),
+              trControl = control,
+              method = "glmnet",
+              family = "binomial",
+              tuneGrid = grid_LR
+)
+
+LR_2 <- train(Diabetes_binary ~ PhysActivity + Age*BMI,
+              data = train,
+              metric = "logLoss",
+              preProcess = c("center", "scale"),
+              trControl = control,
+              method = "glmnet",
+              family = "binomial",
+              tuneGrid = grid_LR
+)
+
+LR_3 <- train(Diabetes_binary ~ HighBP + HighChol + Smoker 
+                + PhysActivity + Age*BMI,
+              data = train,
+              metric = "logLoss",
+              preProcess = c("center", "scale"),
+              trControl = control,
+              method = "glmnet",
+              family = "binomial",
+              tuneGrid = grid_LR
+)
+
+getTrainPerf(LR_1)
+getTrainPerf(LR_2)
+getTrainPerf(LR_3)
+
+LR_3_final <- train(Diabetes_binary ~ HighBP + HighChol + Smoker 
+                + PhysActivity + Age*BMI,
+              data = train,
+              metric = "logLoss",
+              preProcess = c("center", "scale"),
+              trControl = trainControl(method = "none", classProbs = TRUE),
+              method = "glmnet",
+              family = "binomial",
+              tuneGrid = LR_3$bestTune
+)
+
+LR_3_probs <- predict(LR_3_final, newdata = test, type = "prob")
+
+log_loss_LR_3 <- mn_log_loss(
+  data = bind_cols(test, LR_3_probs),
+  truth = Diabetes_binary,
+  event_level = "second",
+  Y
+)
+
+grid_class_tree <- expand.grid(
+  cp = seq(0.0001, 0.01, length.out = 100)
+)
+
+class_tree <- train(Diabetes_binary ~ HighBP + HighChol + Smoker 
+                      + PhysActivity + Age*BMI,
+                    data = train,
+                    metric = "logLoss",
+                    trControl = control,
+                    method = "rpart",
+                    tuneGrid = grid_class_tree
+)
+
+getTrainPerf(class_tree)
+
+class_tree_final <- train(Diabetes_binary ~ HighBP + HighChol + Smoker 
+                      + PhysActivity + Age*BMI,
+                    data = train,
+                    metric = "logLoss",
+                    trControl = trainControl(method = "none", classProbs = TRUE),
+                    method = "rpart",
+                    tuneGrid = class_tree$bestTune
+)
+
+class_tree_probs <- predict(class_tree_final, newdata = test, type = "prob")
+
+log_loss_class_tree <- mn_log_loss(
+  data = bind_cols(test, class_tree_probs),
+  truth = Diabetes_binary,
+  event_level = "second",
+  Y
+)
+
+grid_rand_forest <- expand.grid(
+  mtry = c(2, 3, 4, 5),
+  splitrule = c("gini"),
+  min.node.size = c(1, 5, 10)
+)
+
+rand_forest <- train(Diabetes_binary ~ HighBP + HighChol + Smoker 
+                      + PhysActivity + Age*BMI,
+                     data = train,
+                     metric = "logLoss",
+                     trControl = control,
+                     method = "ranger",
+                     tuneGrid = grid_rand_forest
+)
+
+getTrainPerf(rand_forest)
+
+rand_forest_final <- train(Diabetes_binary ~ HighBP + HighChol + Smoker 
+                      + PhysActivity + Age*BMI,
+                     data = train,
+                     metric = "logLoss",
+                     trControl = trainControl(method = "none", classProbs = TRUE),
+                     method = "ranger",
+                     tuneGrid = rand_forest$bestTune
+)
+
+rand_forest_probs <- predict(rand_forest_final, newdata = test, type = "prob")
+
+log_loss_rand_forest <- mn_log_loss(
+  data = bind_cols(test, rand_forest_probs),
+  truth = Diabetes_binary,
+  event_level = "second",
+  Y
+)
+
+tibble(
+  model = c("Logistic Regression", "Classification Tree", "Random Forest"),
+  log_loss = c(log_loss_LR_3$.estimate, log_loss_class_tree$.estimate, 
+               log_loss_rand_forest$.estimate)
+) |>
+  mutate(log_loss = format(log_loss, digits = 5))
+```
