@@ -88,6 +88,6 @@ function() {
 }
 
 # Example endpoint usage (three function calls)
-# http://localhost:8000/pred
-# http://localhost:8000/pred?HighBP=0&HighChol=0&Smoker=0&PhysActivity=0&Age=9&BMI=30
-# http://localhost:8000/pred?HighBP=1&HighChol=1&Smoker=1&PhysActivity=0&Age=10&BMI=45
+# curl -w "\n" "http://localhost:8000/pred"
+# curl -w "\n" "http://localhost:8000/pred?HighBP=0&HighChol=0&Smoker=0&PhysActivity=0&Age=9&BMI=30"
+# curl -w "\n" "http://localhost:8000/pred?HighBP=1&HighChol=1&Smoker=1&PhysActivity=0&Age=10&BMI=45"
