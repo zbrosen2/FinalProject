@@ -3,8 +3,15 @@ title: "EDA"
 format: html
 editor: visual
 ---
+## Author and Date
+Author: Zachary Rosen
+
+Date: 7/29/2025
 
 ## Introduction
+In this project I'll be working with the Diabetes Health Indicators Dataset which can be found at www.kaggle.com/datasets/alexteboul/diabetes-health-indicators-dataset/.  Specifically, I will be looking at the diabetes_binary_health_indicators_BRFSS2015.csv data.  There are many variables in this dataset, but for the purposes of this project, I will be limiting the scope to the following variables: Diabetes_binary, HighBP, HighChol, Smoker, PhysActivity, Age, and BMI.  Each of these variables is categorical except for BMI.  Diabetes_binary is the response variable, where 0 represents no diabetes and 1 represents prediabetes or diabetes.  The rest of the variables are predictors of Diabetes_binary, where HighBP at level 0 indicates no high blood pressure and 1 indicates high blood pressure, HighChol at level 0 indicates no high cholesterol and 1 indicates high cholesterol, Smoker at level 0 indicates that the person hasn't smoked at least 100 cigarettes in their life and 1 indicates that they have, and PhysActivity at level 0 indicates no physical activity in the last 30 days (not including a job) and 1 indicates physical activity.  Age is a 13 level categorical variable, from younger to older age groups in ascending order.  Lastly, BMI is a numeric variable that represents the body mass index.
+
+The purpose of this exploratory data analysis is to summarize the response variable and three of the predictors (both univariate and bivariate analyses will be performed): BMI, PhysActivity, and Age.  These three predictors were chosen as they are commonly cited as some of the most important risk factors of developing type II diabetes.  For example, this article says, "Being overweight, being physically inactive, [and] getting older... have long been identified as important risk factors for T2DM" (https://pmc.ncbi.nlm.nih.gov/articles/PMC10518250/).  In this project, the ultimate goal of modeling is to find the model that best predicts Diabetes_binary.  This will be achieved by analyzing relationships between variables and ultimately minimizing some metric (log loss).
 
 ## Data
 ```{r}
@@ -13,33 +20,56 @@ library(tidyverse)
 
 diabetes <- read_csv("data/diabetes_binary_health_indicators_BRFSS2015.csv")
 
+# check if there are any na values
+has_na <- any(is.na(diabetes))
+
+# check data to make sure categorical variables are actually categorical
+str(diabetes |> select(Diabetes_binary, Age, BMI, PhysActivity))
+```
+
+The variables are as expected, with Diabetes_binary, Age, and PhysActivity representing categorical variables, and Age representing a numeric variable.  There are no missing values in the data set.
+
+## Summarizations
+```{r}
+#| warning: false
 # Age, BMI, PhysActivity
 summary(diabetes |> select(Diabetes_binary, Age, BMI, PhysActivity))
 
+# convert categorical variables to factors
+diabetes <- diabetes |>
+  mutate(Diabetes_binary = factor(Diabetes_binary, labels = c("N", "Y")),
+         PhysActivity = factor(PhysActivity, labels = c("N", "Y")),
+         Age = factor(Age, ordered = TRUE)
+         )
+
 # create summary stats for BMI and PhysActivity
 diabetes |> 
-  filter(Diabetes_binary %in% c(0, 1)) |>
+  filter(Diabetes_binary %in% c("N", "Y")) |>
   group_by(Diabetes_binary) |>
   summarise(
     BMI_mean = mean(BMI),
     BMI_median = median(BMI),
     BMI_sd = sd(BMI),
-    PhysActivity_prop = mean(PhysActivity)
+    PhysActivity_prop = mean(PhysActivity == "Y")
   )
 
 # create summary stats for Age
 diabetes |>
-  filter(Diabetes_binary %in% c(0, 1)) |>
+  filter(Diabetes_binary %in% c("N", "Y")) |>
   group_by(Diabetes_binary, Age) |>
   summarise(count = n(), .groups = "drop") |>
   group_by(Diabetes_binary) |>
   slice_max(count, n = 1) |>
-  select(Diabetes_binary, most_common_age_group = Age, count)
+  select(Diabetes_binary, most_common_age_group = Age)
+```
 
+People with diabetes had higher average BMI (32 vs. 28) and reported less physical activity (63% vs. 78%) than those without diabetes.  The most common age group was slightly older in the diabetic group (group 10 vs. group 9).  These summary statistics align with expectations: individuals with diabetes had higher BMI, lower physical activity, and tended to be older.  This supports the hypothesis that these factors are associated with developing diabetes
+
+```{r}
+#| warning: false
 # univariate Diabetes_binary plot (bar plot)
 ggplot(diabetes, aes(x = Diabetes_binary)) +
   geom_bar() +
-  scale_x_continuous(breaks = c(0, 1)) +
   labs(title = "Bar Plot of Diabetes Status",
        x = "Diabetes Status",
        y = "Count")
@@ -61,15 +91,19 @@ ggplot(diabetes, aes(x = BMI)) +
 # univariate PhysActivity plot (bar plot)
 ggplot(diabetes, aes(x = PhysActivity)) +
   geom_bar() +
-  scale_x_continuous(breaks = c(0, 1)) +
   labs(title = "Bar Plot of PhysActivity",
        x = "PhysActivity",
        y = "Count")
+```
 
+The Bar Plot of Diabetes Status shows a significant class imbalance, with many more instances of no diabetes than having diabetes.  Even though there's class imbalance, the minority class (diabetic) still has more than 25,000 instances, which is a large enough sample to provide meaningful insights.  The Bar Plot of Age shows a slight class imbalance, but again there are plenty of instances of each class.  The Histogram of BMI shows that most instances cluster around about 27, with only a few outliers on the higher end.  The Bar Plot of PhysActivity shows a class imbalance, but once again there are enough instances in each class to provide meaningful insights and stable estimates.
+
+```{r}
+#| warning: false
 # bivariate Age by Diabetes_binary plot (bar plot)
 ggplot(diabetes, aes(x = Age, fill = factor(Diabetes_binary))) +
   geom_bar(position = "dodge") +
-  labs(title = "Diabetes Count by Age Group",
+  labs(title = "Distribution of Diabetes Cases across Age Groups",
        x = "Age Group", y = "Count", fill = "Diabetes Status") +
   theme_minimal()
 
@@ -84,5 +118,7 @@ tblPhysActivity <- table(diabetes$PhysActivity, diabetes$Diabetes_binary,
                          dnn = c("Physical Activity", "Diabetes"))
 tblPhysActivity
 ```
+
+The Distribution of Diabetes Cases across Age Groups plot shows the general trend that the diabetic group is more associated with older individuals (the diabetic group is centered further to the right than the group without diabetes).  The BMI Distribution by Diabetes Status shows the trend that the diabetic group tends to have a higher BMI than the group without diabetes (again, the diabetic group is centered further to the right).  The contingency table shows that most individuals reported being physically active, and among them, the rate of diabetes was lower (about 12%) compared to those who were inactive (about 21%).  All of this supports the idea that old age, high BMI, and low physical activity are important risk factors for diabetes.
 
 [Click here for the Modeling Page](Modeling.html)

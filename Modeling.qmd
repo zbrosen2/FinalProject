@@ -3,11 +3,17 @@ title: "Modeling"
 format: html
 editor: visual
 ---
+## Author and Date
+Author: Zachary Rosen
+
+Date: 7/29/2025
 
 ## Introduction
+In this project I'll be working with the Diabetes Health Indicators Dataset which can be found at www.kaggle.com/datasets/alexteboul/diabetes-health-indicators-dataset/.  Specifically, I will be looking at the diabetes_binary_health_indicators_BRFSS2015.csv data.  There are many variables in this dataset, but for the purposes of this project, I will be limiting the scope to the following variables: Diabetes_binary, HighBP, HighChol, Smoker, PhysActivity, Age, and BMI.  Each of these variables is categorical except for BMI.  Diabetes_binary is the response variable, where 0 represents no diabetes and 1 represents prediabetes or diabetes.  The rest of the variables are predictors of Diabetes_binary, where HighBP at level 0 indicates no high blood pressure and 1 indicates high blood pressure, HighChol at level 0 indicates no high cholesterol and 1 indicates high cholesterol, Smoker at level 0 indicates that the person hasn't smoked at least 100 cigarettes in their life and 1 indicates that they have, and PhysActivity at level 0 indicates no physical activity in the last 30 days (not including a job) and 1 indicates physical activity.  Age is a 13 level categorical variable, from younger to older age groups in ascending order.  Lastly, BMI is a numeric variable that represents the body mass index.
+
+The purpose of this modeling file is to develop and compare predictive models for diabetes status using key predictors.  By evaluating logistic regression models, classification trees, and random forests with cross-validated log loss, I aim to identify the best performing model to accurately predict diabetes status.  First I will identify the best performing model in each category using cross-validation, and then I will fit a final model in each category using the whole training set.  Finally, I will evaluate each of the three "best" models on the testing set and declare a winner.
 
 ## Data
-
 ```{r}
 #| warning: false
 set.seed(123)
@@ -19,6 +25,7 @@ library(yardstick)
 
 diabetes <- read_csv("data/diabetes_binary_health_indicators_BRFSS2015.csv")
 
+# convert categorical variables to factors
 diabetes <- diabetes |>
   mutate(Diabetes_binary = factor(Diabetes_binary, labels = c("N", "Y")),
          HighBP = factor(HighBP),
@@ -28,18 +35,28 @@ diabetes <- diabetes |>
          Age = factor(Age, ordered = TRUE)
          )
 
+# split data into train/test (70/30)
 data_split <- initial_split(diabetes, prop = 0.7)
 train <- training(data_split)
 test <- testing(data_split)
 
+# 5-fold cv using log loss
 control <- trainControl(method = "cv", number = 5, classProbs = TRUE,
                             summaryFunction = mnLogLoss)
+```
 
+## Logistic Regression Models
+Logistic regression can be used as a classification model when the response variable is binary.  It estimates the probability that an observation belongs to a particular class (e.g. diabetic or not).  It models the log-odds of the outcome as a linear combination of the predictors.  Logistic regression is useful here since I'm working with a binary outcome (Diabetes_binary) and want to understand how different predictors are associated with diabetes risk.  It provides interpretable coefficients and works well with log loss as a metric.  This is because log loss directly measures the accuracy of predicted probabilities (and logistic regression outputs these probabilities).
+```{r}
+#| warning: false
+# set tuning grid for alpha (0 is ridge regression, 1 is LASSO and 0.5 is elastic net)
+# lambda is the penalty hyperparameter
 grid_LR <- expand.grid(
   alpha = c(0, 0.5, 1),
   lambda = exp(seq(log(0.001), log(10), length.out = 200))
 )
 
+# simple additive model
 LR_1 <- train(Diabetes_binary ~ PhysActivity + Age + BMI,
               data = train,
               metric = "logLoss",
@@ -50,6 +67,7 @@ LR_1 <- train(Diabetes_binary ~ PhysActivity + Age + BMI,
               tuneGrid = grid_LR
 )
 
+# similar to LR_1 but with an added interaction term between Age and BMI
 LR_2 <- train(Diabetes_binary ~ PhysActivity + Age*BMI,
               data = train,
               metric = "logLoss",
@@ -60,6 +78,7 @@ LR_2 <- train(Diabetes_binary ~ PhysActivity + Age*BMI,
               tuneGrid = grid_LR
 )
 
+# similar to LR_2 but with HighBP, HighChol, and Smoker as additional predictors
 LR_3 <- train(Diabetes_binary ~ HighBP + HighChol + Smoker 
                 + PhysActivity + Age*BMI,
               data = train,
@@ -71,10 +90,13 @@ LR_3 <- train(Diabetes_binary ~ HighBP + HighChol + Smoker
               tuneGrid = grid_LR
 )
 
+# get training performances for each model
 getTrainPerf(LR_1)
 getTrainPerf(LR_2)
 getTrainPerf(LR_3)
 
+# LR_3 is winner (lowest log loss)
+# fit final model without cv and with best values for hyperparameters
 LR_3_final <- train(Diabetes_binary ~ HighBP + HighChol + Smoker 
                 + PhysActivity + Age*BMI,
               data = train,
@@ -86,8 +108,10 @@ LR_3_final <- train(Diabetes_binary ~ HighBP + HighChol + Smoker
               tuneGrid = LR_3$bestTune
 )
 
+# predict using test data
 LR_3_probs <- predict(LR_3_final, newdata = test, type = "prob")
 
+# compute test log loss for final model
 log_loss_LR_3 <- mn_log_loss(
   data = bind_cols(test, LR_3_probs),
   truth = Diabetes_binary,
@@ -95,10 +119,23 @@ log_loss_LR_3 <- mn_log_loss(
   Y
 )
 
+LR_3$bestTune
+```
+
+LR_2 has slightly lower log loss than LR_1 and LR_3 has slightly lower log loss than LR_2.  This indicates that adding an interaction term between Age and BMI did in fact help predictive performance while training.  Similarly, adding HighBP, HighChol, and Smoker as additional predictors also helped predictive performance while training (by quite a lot).  The model with the lowest log loss is chosen as the best model (LR_3).
+
+A classification tree is a decision tree that recursively splits the data based on predictor values to classify observations.  At each node, it chooses the best split to maximize class purity (using a metric like Gini impurity).  The final model is a tree where each leaf represents a class label.  These models are easy to interpret and can handle numeric and categorical predictors.  We might use this as they are especially helpful when the relationship between predictors and the outcome is complex.
+
+## Classification Tree
+```{r}
+#| warning: false
+# set tuning grid for complexity parameter
 grid_class_tree <- expand.grid(
   cp = seq(0.0001, 0.01, length.out = 100)
 )
 
+# use model formula from LR_3 since it performed the best
+# but instead of logistic regression, use classification tree
 class_tree <- train(Diabetes_binary ~ HighBP + HighChol + Smoker 
                       + PhysActivity + Age*BMI,
                     data = train,
@@ -108,8 +145,10 @@ class_tree <- train(Diabetes_binary ~ HighBP + HighChol + Smoker
                     tuneGrid = grid_class_tree
 )
 
+# get training performance
 getTrainPerf(class_tree)
 
+# fit final model without cv and with best value for hyperparameter
 class_tree_final <- train(Diabetes_binary ~ HighBP + HighChol + Smoker 
                       + PhysActivity + Age*BMI,
                     data = train,
@@ -119,8 +158,10 @@ class_tree_final <- train(Diabetes_binary ~ HighBP + HighChol + Smoker
                     tuneGrid = class_tree$bestTune
 )
 
+# predict using test data
 class_tree_probs <- predict(class_tree_final, newdata = test, type = "prob")
 
+# compute test log loss for final model
 log_loss_class_tree <- mn_log_loss(
   data = bind_cols(test, class_tree_probs),
   truth = Diabetes_binary,
@@ -128,12 +169,23 @@ log_loss_class_tree <- mn_log_loss(
   Y
 )
 
+class_tree$bestTune
+```
+
+The tuned value of the complexity parameter is 0.0001, which is quite small.  This indicates that the model created a larger tree with many splits.  Overall the final model is relatively complex, which helps fit the training data well, but increases the risk of overfitting.
+
+## Random Forest
+```{r}
+#| warning: false
+# set tuning grid for mtry (# of randomly selected predictors), splitrule (metric 
+# used to determine splitting rule), and min.node.size (minimal node size)
 grid_rand_forest <- expand.grid(
   mtry = c(2, 3, 4, 5),
   splitrule = c("gini"),
   min.node.size = c(1, 5, 10)
 )
 
+# same model formula as before but using a random forest model
 rand_forest <- train(Diabetes_binary ~ HighBP + HighChol + Smoker 
                       + PhysActivity + Age*BMI,
                      data = train,
@@ -143,8 +195,10 @@ rand_forest <- train(Diabetes_binary ~ HighBP + HighChol + Smoker
                      tuneGrid = grid_rand_forest
 )
 
+# get training performance
 getTrainPerf(rand_forest)
 
+# fit final model without cv and with best values for hyperparameters
 rand_forest_final <- train(Diabetes_binary ~ HighBP + HighChol + Smoker 
                       + PhysActivity + Age*BMI,
                      data = train,
@@ -154,8 +208,10 @@ rand_forest_final <- train(Diabetes_binary ~ HighBP + HighChol + Smoker
                      tuneGrid = rand_forest$bestTune
 )
 
+# predict using test data
 rand_forest_probs <- predict(rand_forest_final, newdata = test, type = "prob")
 
+# compute test log loss for final model
 log_loss_rand_forest <- mn_log_loss(
   data = bind_cols(test, rand_forest_probs),
   truth = Diabetes_binary,
@@ -163,6 +219,17 @@ log_loss_rand_forest <- mn_log_loss(
   Y
 )
 
+rand_forest$bestTune
+```
+
+The tuned value of mtry was 3 and min.node.size was 10.  This likely helps balance model complexity and overfitting risk.
+
+A random forest is an ensemble method that builds on many decision trees (e.g. classification trees) on bootstrapped samples of the data and averages their predictions.  At each split, only a random subset of predictors is considered, which reduces overfitting.  It is often more stable than a traditional classification tree, and is often more accurate and less sensitive to small changes in the data.  In our case, it is useful for capturing complex patterns in the data without risking overfitting (like with a traditional classification tree).
+
+## Final Model Selection
+```{r}
+#| warning: false
+# make tibble with "best" LR, class tree, and random forest models for comparison
 tibble(
   model = c("Logistic Regression", "Classification Tree", "Random Forest"),
   log_loss = c(log_loss_LR_3$.estimate, log_loss_class_tree$.estimate, 
@@ -170,3 +237,5 @@ tibble(
 ) |>
   mutate(log_loss = format(log_loss, digits = 5))
 ```
+
+The final "best" model is the logistic regression model, which just barely outperforms the random forest model (log loss of 0.34001 vs. 0.34013).  These are both significantly better performing than the classification tree (log loss of 0.35953).
