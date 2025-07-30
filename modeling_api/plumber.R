@@ -14,7 +14,7 @@ library(rsample)
 library(caret)
 library(yardstick)
 
-diabetes <- read_csv("../data/diabetes_binary_health_indicators_BRFSS2015.csv")
+diabetes <- read_csv("./data/diabetes_binary_health_indicators_BRFSS2015.csv")
 
 # calculate mean (if numeric) or most prevalent class (if categorical)
 mean_bmi <- mean(diabetes$BMI)
@@ -88,6 +88,6 @@ function() {
 }
 
 # Example endpoint usage (three function calls)
-# https://localhost:8000/pred
-# https://localhost:8000/pred?HighBP=0&HighChol=0&Smoker=0&PhysActivity=0&Age=9&BMI=30
-# https://localhost:8000/pred?HighBP=1&HighChol=1&Smoker=1&PhysActivity=0&Age=10&BMI=45
+# http://localhost:8000/pred
+# http://localhost:8000/pred?HighBP=0&HighChol=0&Smoker=0&PhysActivity=0&Age=9&BMI=30
+# http://localhost:8000/pred?HighBP=1&HighChol=1&Smoker=1&PhysActivity=0&Age=10&BMI=45
